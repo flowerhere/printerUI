@@ -313,7 +313,7 @@ cd Packages/MFConnectKit && swift run mfconnect-devserver --lp Canon_MF642C_643C
 
 ## 驗證狀態
 
-這份程式碼是在**沒有 Mac 的 Linux 環境**中撰寫的，所以驗證範圍要分清楚：
+這份程式碼在 Linux 環境中撰寫與測試，之後在 Mac mini（Xcode 27.2）上以 `scripts/build_all.sh` 完成建置驗證：
 
 | 項目 | 狀態 |
 |---|---|
@@ -323,12 +323,12 @@ cd Packages/MFConnectKit && swift run mfconnect-devserver --lp Canon_MF642C_643C
 | `scripts/smoke_test.sh` 對開發伺服器 14 項全過（含 503、429） | ✅ 已驗證（Linux） |
 | 上傳頁以 Chromium 手機尺寸實測：登入、錯誤 token、多檔、前端格式檢查、上傳進度、輪詢到「完成」、記住 token、登出、QR 帶 token | ✅ 已驗證 |
 | `project.yml` 用 XcodeGen 2.44 實際產生專案：三個 target、Extension 嵌入、Info.plist、entitlements | ✅ 已驗證 |
-| `xcodebuild` 建置 `MFConnectMac`、`MFConnectiOS` | ⏳ **需要在 Mac 上執行 `scripts/build_all.sh`** |
-| macOS 專屬程式碼（PDFKit / ImageIO 轉檔、Keychain、DNS-SD、SwiftUI 選單列、SMAppService、通知） | ⏳ 已仔細檢查但未在 Apple SDK 上編譯 |
-| iOS App、Share Extension（SwiftUI、NWBrowser、NSItemProvider） | ⏳ 已仔細檢查但未在 Apple SDK 上編譯 |
+| `xcodebuild` 建置 `MFConnectMac`、`MFConnectiOS`（Xcode 27.2） | ✅ 已驗證（Mac） |
+| `swift test` 在 macOS 上執行 | ✅ 已驗證（Mac） |
+| macOS 專屬程式碼（PDFKit / ImageIO 轉檔、Keychain、DNS-SD、SwiftUI 選單列、SMAppService、通知） | ✅ 編譯通過；⏳ 執行行為見手動測試清單 |
+| iOS App、Share Extension（SwiftUI、NWBrowser、NSItemProvider） | ✅ 編譯通過；⏳ 執行行為見手動測試清單 |
 | 實機列印、iOS 實機分享 | ⏳ 見下方手動測試清單 |
 
-如果 `xcodebuild` 出現編譯錯誤，大多會是 App 層的 SwiftUI / Apple API 細節，`MFConnectKit` 的邏輯已經測過。
 
 ## 手動測試清單
 
@@ -336,7 +336,7 @@ cd Packages/MFConnectKit && swift run mfconnect-devserver --lp Canon_MF642C_643C
 
 ### 建置
 
-- [ ] `scripts/build_all.sh` 全部成功（兩個 scheme 建置成功、`swift test` 通過）
+- [x] `scripts/build_all.sh` 全部成功（兩個 scheme 建置成功、`swift test` 通過）
 - [ ] 本專案程式碼沒有警告（`build_all.sh` 會列出）
 
 ### macOS 選單列
