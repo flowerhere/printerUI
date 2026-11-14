@@ -7,6 +7,17 @@ cd "$(dirname "$0")/.."
 LOG_DIR="build/logs"
 mkdir -p "${LOG_DIR}"
 
+# 先確認 xcodebuild 指向完整的 Xcode，而不是 Command Line Tools
+DEV_DIR="$(xcode-select -p 2>/dev/null || true)"
+if [[ "${DEV_DIR}" != *.app/Contents/Developer ]]; then
+  echo "✘ 目前的開發者目錄是「${DEV_DIR:-未設定}」，xcodebuild 需要完整的 Xcode。"
+  echo "  1. 從 App Store 安裝 Xcode 26 以上並開啟一次"
+  echo "  2. sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+  echo "  3. sudo xcodebuild -license accept"
+  exit 1
+fi
+echo "▸ 使用 $(xcodebuild -version | head -1)（${DEV_DIR}）"
+
 if ! command -v xcodegen >/dev/null; then
   echo "▸ 安裝 XcodeGen（Homebrew）"
   brew install xcodegen
