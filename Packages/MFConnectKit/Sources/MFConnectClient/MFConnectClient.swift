@@ -83,7 +83,8 @@ public final class MFConnectClient: @unchecked Sendable {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: APIHeader.authorization)
-        request.setValue(clientName, forHTTPHeaderField: APIHeader.client)
+        // header 值只能是 ASCII：中文名稱以百分比編碼傳送，伺服器端解碼
+        request.setValue(FilenameSanitizer.encodeHeader(clientName), forHTTPHeaderField: APIHeader.client)
         return request
     }
 

@@ -128,7 +128,9 @@ struct UploadHandler {
     static func describeClient(declared: String?, userAgent: String?) -> String {
         var parts: [String] = []
         if let declared {
-            let clean = FilenameSanitizer.sanitize(String(declared.prefix(60)))
+            // X-Client 以百分比編碼傳送（header 值只能是 ASCII）
+            let decoded = String(declared.prefix(200)).removingPercentEncoding ?? declared
+            let clean = FilenameSanitizer.sanitize(String(decoded.prefix(60)))
             if clean != FilenameSanitizer.fallbackName { parts.append(clean) }
         }
         if let ua = userAgent {

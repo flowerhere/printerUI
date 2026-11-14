@@ -46,7 +46,7 @@ button:disabled { opacity: .5; cursor: default; }
 .file-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
 .file-name { font-weight: 600; word-break: break-all; }
 .opts { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; }
-@media (max-width: 420px) { .opts { grid-template-columns: 1fr 1fr; } .opts .wide { grid-column: span 2; } }
+@media (max-width: 420px) { .opts { grid-template-columns: 1fr 1fr; grid-auto-flow: dense; } .opts .wide { grid-column: span 2; } }
 progress { width: 100%; height: 8px; margin-top: 12px; accent-color: var(--accent); }
 .status { margin-top: 8px; font-size: 15px; }
 .status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); }
@@ -157,7 +157,8 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
   function formatSize(n) {
     if (n < 1024) return n + " B";
     if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
-    return (n / 1048576).toFixed(1) + " MB";
+    const mb = n / 1048576;
+    return (Number.isInteger(mb) ? mb : mb.toFixed(1)) + " MB";
   }
 
   function errorMessage(status, body) {
@@ -361,6 +362,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
       setStatus(item, "上傳中…", "");
 
       const xhr = new XMLHttpRequest();
+      try {
       xhr.open("POST", "/api/jobs");
       xhr.setRequestHeader("Authorization", "Bearer " + token);
       xhr.setRequestHeader("Content-Type", "application/octet-stream");
@@ -368,7 +370,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
       xhr.setRequestHeader("X-Copies", String(opts.copies));
       xhr.setRequestHeader("X-Duplex", opts.duplex);
       xhr.setRequestHeader("X-Color", opts.color);
-      xhr.setRequestHeader("X-Client", "網頁上傳");
+      xhr.setRequestHeader("X-Client", encodeURIComponent("網頁上傳"));
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           bar.value = Math.round((e.loaded / e.total) * 100);
@@ -390,6 +392,10 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
       };
       xhr.onerror = () => { failUpload(item, 0, ""); resolve(); };
       xhr.send(item.file);
+      } catch (e) {
+        failUpload(item, -1, JSON.stringify({ message: "瀏覽器無法送出請求：" + e.message }));
+        resolve();
+      }
     });
   }
 
@@ -442,10 +448,16 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 
   // ---------- 啟動 ----------
   // 支援 QR code 帶入 token：http://host:port/#token=xxxx（片段不會送到伺服器）
-  const m = location.hash.match(/token=([A-Za-z0-9_\-]+)/);
-  if (m) {
+  function tokenFromHash() {
+    const m = location.hash.match(/token=([A-Za-z0-9_\-]+)/);
+    if (!m) return null;
     history.replaceState(null, "", location.pathname);
-    login(m[1], false);
+    return m[1];
+  }
+  window.addEventListener("hashchange", () => { const t = tokenFromHash(); if (t) login(t, false); });
+  const fromHash = tokenFromHash();
+  if (fromHash) {
+    login(fromHash, false);
   } else {
     const saved = storageGet();
     if (saved) login(saved, true); else enterLoginView();

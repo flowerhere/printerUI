@@ -8,7 +8,7 @@ import Observation
 @MainActor
 @Observable
 public final class ServerBrowser {
-    public struct DiscoveredServer: Identifiable, Hashable, Sendable {
+    public struct DiscoveredServer: Identifiable, Hashable {
         public var id: String { serviceName }
         public var serviceName: String
         public var displayName: String
@@ -38,8 +38,9 @@ public final class ServerBrowser {
         let parameters = NWParameters()
         parameters.includePeerToPeer = false
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: MFConnectConstants.bonjourServiceType, domain: nil), using: parameters)
+        // browser 在 main queue 上執行，所以 handler 一定在主執行緒被呼叫。
         browser.stateUpdateHandler = { [weak self] newState in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 switch newState {
                 case .ready: self?.state = .searching
                 case .failed(let error): self?.state = .failed(Self.describe(error))
@@ -49,26 +50,30 @@ public final class ServerBrowser {
             }
         }
         browser.browseResultsChangedHandler = { [weak self] results, _ in
-            let found: [DiscoveredServer] = results.compactMap { result in
-                guard case let .service(name, _, _, _) = result.endpoint else { return nil }
-                var displayName = name
-                var approval: Bool?
-                var host: String?
-                if case let .bonjour(txt) = result.metadata {
-                    let dict = txt.dictionary
-                    if let n = dict[MFConnectConstants.TXTKey.serverName], !n.isEmpty { displayName = n }
-                    if let a = dict[MFConnectConstants.TXTKey.requiresApproval] { approval = (a == "1") }
-                    if let h = dict[MFConnectConstants.TXTKey.host], !h.isEmpty { host = h }
-                }
-                return DiscoveredServer(serviceName: name, displayName: displayName, requiresApproval: approval, host: host, endpoint: result.endpoint)
-            }
-            Task { @MainActor in
-                self?.servers = found.sorted { $0.displayName < $1.displayName }
+            MainActor.assumeIsolated {
+                self?.update(with: results)
             }
         }
         browser.start(queue: .main)
         self.browser = browser
         state = .searching
+    }
+
+    private func update(with results: Set<NWBrowser.Result>) {
+        let found: [DiscoveredServer] = results.compactMap { result in
+            guard case let .service(name, _, _, _) = result.endpoint else { return nil }
+            var displayName = name
+            var approval: Bool?
+            var host: String?
+            if case let .bonjour(txt) = result.metadata {
+                let dict = txt.dictionary
+                if let n = dict[MFConnectConstants.TXTKey.serverName], !n.isEmpty { displayName = n }
+                if let a = dict[MFConnectConstants.TXTKey.requiresApproval] { approval = (a == "1") }
+                if let h = dict[MFConnectConstants.TXTKey.host], !h.isEmpty { host = h }
+            }
+            return DiscoveredServer(serviceName: name, displayName: displayName, requiresApproval: approval, host: host, endpoint: result.endpoint)
+        }
+        servers = found.sorted { $0.displayName < $1.displayName }
     }
 
     public func stop() {
@@ -81,7 +86,8 @@ public final class ServerBrowser {
     /// 否則實際連線一次解析出 IP 與連接埠。
     public func resolveURL(for server: DiscoveredServer) async throws -> URL {
         let hostPort = try await Self.resolve(endpoint: server.endpoint)
-        let hostName = server.host ?? hostPort.host
+        var hostName = server.host ?? hostPort.host
+        if hostName.contains(":") { hostName = "[\(hostName)]" } // IPv6 位址需加方括號
         var components = URLComponents()
         components.scheme = "http"
         components.host = hostName
@@ -91,11 +97,12 @@ public final class ServerBrowser {
     }
 
     private nonisolated static func resolve(endpoint: NWEndpoint) async throws -> (host: String, port: Int) {
-        let connection = NWConnection(to: endpoint, using: .tcp)
+        let box = ConnectionBox(NWConnection(to: endpoint, using: .tcp))
         let queue = DispatchQueue(label: "MFConnect.resolve")
         return try await withCheckedThrowingContinuation { continuation in
             let resumed = ResumeOnce()
-            connection.stateUpdateHandler = { state in
+            box.connection.stateUpdateHandler = { state in
+                let connection = box.connection
                 switch state {
                 case .ready:
                     defer { connection.cancel() }
@@ -120,9 +127,9 @@ public final class ServerBrowser {
                     break
                 }
             }
-            connection.start(queue: queue)
+            box.connection.start(queue: queue)
             queue.asyncAfter(deadline: .now() + 8) {
-                connection.cancel()
+                box.connection.cancel()
                 if resumed.claim() { continuation.resume(throwing: ClientError.network("解析逾時")) }
             }
         }
@@ -134,6 +141,12 @@ public final class ServerBrowser {
         }
         return error.localizedDescription
     }
+}
+
+/// NWConnection 只在自己的 queue 上使用；包裝起來以便放進 @Sendable closure。
+private final class ConnectionBox: @unchecked Sendable {
+    let connection: NWConnection
+    init(_ connection: NWConnection) { self.connection = connection }
 }
 
 private final class ResumeOnce: @unchecked Sendable {

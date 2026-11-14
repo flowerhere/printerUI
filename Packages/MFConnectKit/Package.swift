@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "MFConnectCore", targets: ["MFConnectCore"]),
         .library(name: "MFConnectServer", targets: ["MFConnectServer"]),
         .library(name: "MFConnectClient", targets: ["MFConnectClient"]),
+        .executable(name: "mfconnect-devserver", targets: ["mfconnect-devserver"]),
     ],
     dependencies: [
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.5.0"),
@@ -35,6 +36,8 @@ let package = Package(
         ),
         // 給 iOS / iPadOS 主 App 與 Share Extension 使用：上傳用戶端、Bonjour 探索、共用設定。
         .target(name: "MFConnectClient", dependencies: ["MFConnectCore"]),
+        // 開發用：不需 Xcode，以試跑模式啟動伺服器（swift run mfconnect-devserver）。
+        .executableTarget(name: "mfconnect-devserver", dependencies: ["MFConnectServer", "MFConnectCore"]),
         .testTarget(name: "MFConnectCoreTests", dependencies: ["MFConnectCore"]),
         .testTarget(
             name: "MFConnectServerTests",

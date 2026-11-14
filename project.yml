@@ -1,0 +1,187 @@
+# XcodeGen 專案定義：`xcodegen generate` 產生 MFConnect.xcodeproj
+# bundle id 使用佔位符 com.example.mfconnect，請改成自己的（見 README「簽署設定」）。
+name: MFConnect
+
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  developmentLanguage: zh-Hant
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # 在這裡填入你的 Team ID（或在 Xcode 的 Signing & Capabilities 選擇 Team）
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # 警告不升級為錯誤
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+    GCC_TREAT_WARNINGS_AS_ERRORS: NO
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+packages:
+  MFConnectKit:
+    path: Packages/MFConnectKit
+
+targets:
+  # ───────────────────────── macOS：選單列列印伺服器 ─────────────────────────
+  MFConnectMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/macOS
+    dependencies:
+      - package: MFConnectKit
+        product: MFConnectCore
+      - package: MFConnectKit
+        product: MFConnectServer
+    info:
+      path: App/macOS/Info.plist
+      properties:
+        CFBundleDisplayName: MFConnect
+        CFBundleDevelopmentRegion: zh-Hant
+        LSApplicationCategoryType: public.app-category.utilities
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        # 只顯示在選單列，不出現在 Dock
+        LSUIElement: true
+        NSHumanReadableCopyright: ""
+        NSLocalNetworkUsageDescription: MFConnect 需要使用區域網路，讓家人的手機與電腦把檔案傳到這台 Mac 列印。
+        NSBonjourServices:
+          - _mfconnect._tcp
+    entitlements:
+      path: App/macOS/MFConnectMac.entitlements
+      properties:
+        # 個人使用：關閉 App Sandbox 才能呼叫 /usr/bin/lp。
+        # 上架 Mac App Store 需改用 NSPrintOperation 實作 PrintService 並開啟沙盒（見 README）。
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_NAME: MFConnect
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mfconnect.mac
+        ENABLE_HARDENED_RUNTIME: YES
+        # 沒有設定 Team 時以 ad-hoc 簽署，方便本機建置
+        CODE_SIGN_IDENTITY: "-"
+        COMBINE_HIDPI_IMAGES: YES
+
+  # ───────────────────────── iOS / iPadOS：設定頁 ─────────────────────────
+  MFConnectiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/iOS
+    dependencies:
+      - package: MFConnectKit
+        product: MFConnectCore
+      - package: MFConnectKit
+        product: MFConnectClient
+      - target: MFConnectShare
+    info:
+      path: App/iOS/Info.plist
+      properties:
+        CFBundleDisplayName: MFConnect
+        CFBundleDevelopmentRegion: zh-Hant
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: MFConnect 需要使用區域網路，才能找到家中 Mac mini 上的列印伺服器並傳送檔案。
+        NSBonjourServices:
+          - _mfconnect._tcp
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        MFKeychainAccessGroup: "$(AppIdentifierPrefix)com.example.mfconnect.shared"
+    entitlements:
+      path: App/iOS/MFConnectiOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.example.mfconnect
+        keychain-access-groups:
+          - "$(AppIdentifierPrefix)com.example.mfconnect.shared"
+    settings:
+      base:
+        PRODUCT_NAME: MFConnect
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mfconnect
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+
+  # ───────────────────────── iOS / iPadOS：Share Extension ─────────────────────────
+  MFConnectShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/ShareExtension
+    dependencies:
+      - package: MFConnectKit
+        product: MFConnectCore
+      - package: MFConnectKit
+        product: MFConnectClient
+    info:
+      path: App/ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: MFConnect
+        CFBundleDevelopmentRegion: zh-Hant
+        NSLocalNetworkUsageDescription: MFConnect 需要使用區域網路，才能把分享的檔案傳到家中 Mac mini 的列印伺服器。
+        NSBonjourServices:
+          - _mfconnect._tcp
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        MFKeychainAccessGroup: "$(AppIdentifierPrefix)com.example.mfconnect.shared"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionAttributes:
+            # 只在分享內容包含 PDF 或圖片時出現（最多 20 個項目）
+            NSExtensionActivationRule: >-
+              SUBQUERY (extensionItems, $extensionItem,
+                SUBQUERY ($extensionItem.attachments, $attachment,
+                  ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
+                  || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
+                ).@count >= 1 AND SUBQUERY ($extensionItem.attachments, $attachment, TRUEPREDICATE).@count <= 20
+              ).@count >= 1
+    entitlements:
+      path: App/ShareExtension/MFConnectShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.example.mfconnect
+        keychain-access-groups:
+          - "$(AppIdentifierPrefix)com.example.mfconnect.shared"
+    settings:
+      base:
+        PRODUCT_NAME: MFConnectShare
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mfconnect.ShareExtension
+        TARGETED_DEVICE_FAMILY: "1,2"
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+schemes:
+  MFConnectMac:
+    build:
+      targets:
+        MFConnectMac: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  MFConnectiOS:
+    build:
+      targets:
+        MFConnectiOS: all
+        MFConnectShare: all
+    run:
+      config: Debug
+    archive:
+      config: Release
