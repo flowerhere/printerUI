@@ -62,7 +62,10 @@ final class AppModel {
         } else {
             loaded.serverName = Host.current().localizedName ?? "MFConnect"
         }
-        settings = loaded.clamped()
+        // 注意：@Observable 會把 var 改寫成計算屬性，所以 init 中一律使用區域變數，
+        // 不在所有 stored property 設定完之前讀取 self.settings 等屬性。
+        let initialSettings = loaded.clamped()
+        settings = initialSettings
 
         // 2. token：首次啟動產生 32 bytes 隨機 token，存在 Keychain
         var startupProblems: [String] = []
@@ -93,21 +96,24 @@ final class AppModel {
         }
         startupError = startupProblems.isEmpty ? nil : startupProblems.joined(separator: "\n")
 
-        runtime = ServerRuntimeState(settings: settings)
-        accessGuard = AccessGuard(token: currentToken)
-        let printService: any PrintService = settings.dryRun ? DryRunPrintService() : LpPrintService()
+        let runtimeState = ServerRuntimeState(settings: initialSettings)
+        let guardian = AccessGuard(token: currentToken)
+        let printService: any PrintService = initialSettings.dryRun ? DryRunPrintService() : LpPrintService()
         let eventSink = EventSink()
-        queue = JobQueue(store: store, printService: printService,
-                         configuration: JobQueue.Configuration(settings: settings),
-                         onEvent: { event in eventSink.handle(event) })
-        server = MFConnectHTTPServer(state: runtime, accessGuard: accessGuard, queue: queue)
+        let jobQueue = JobQueue(store: store, printService: printService,
+                                configuration: JobQueue.Configuration(settings: initialSettings),
+                                onEvent: { event in eventSink.handle(event) })
+        runtime = runtimeState
+        accessGuard = guardian
+        queue = jobQueue
+        server = MFConnectHTTPServer(state: runtimeState, accessGuard: guardian, queue: jobQueue)
         eventSink.model = self
 
         Notifier.shared.configure(approve: { [weak self] id in self?.approve(id) },
                                   reject: { [weak self] id in self?.reject(id) })
 
         Task {
-            await queue.start()
+            await jobQueue.start()
             await refreshPrinters()
             await startServer()
         }
